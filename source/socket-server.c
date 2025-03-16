@@ -27,10 +27,11 @@
     }                            \
     static_assert(true, "require semi-colon")
 
-struct socket_server* SS_open(uint16_t port, void (*message_received)(struct socket_client*, char const*))
+struct socket_server* SS_open(uint16_t port, void (*message_received)(struct socket_server* server, struct socket_client*, char const*))
 {
     struct socket_server* server = malloc(sizeof(struct socket_server));
     server->message_received = message_received;
+    server->port = port;
 
     server->fd = socket(PF_INET, SOCK_STREAM, 0);
     RETURN_ERR_IF_FAILED(server->fd, server, "Failed creating socket");
@@ -107,7 +108,7 @@ static void _receive_from_client(struct socket_server* server, struct socket_cli
         return;
     }
 
-    server->message_received(client, buf);
+    server->message_received(server, client, buf);
 }
 
 static void _handle_poll(struct socket_server* server, struct pollfd poll_results[MAX_SIMULTANEOUS_CONNECTIONS + 1])
@@ -180,4 +181,5 @@ void SS_free(struct socket_server* server)
 {
     close(server->fd);
     free(server);
+    server = 0;
 }
