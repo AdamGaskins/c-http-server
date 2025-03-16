@@ -10,7 +10,7 @@ int main()
         return 1;
     }
 
-    HTTP_register_directory(serv, "/index.html", "html/index.html");
+    HTTP_register_file(serv, "/index.html", "html/index.html");
 
     HTTP_handle(serv);
 

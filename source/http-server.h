@@ -65,6 +65,6 @@ enum http_method HTTP_method_from_string(char const* method);
 
 struct http_server* HTTP_open(uint16_t port);
 void HTTP_handle(struct http_server* server);
-void HTTP_register_directory(struct http_server* server, char* url, char* directory);
+void HTTP_register_file(struct http_server* server, char* url, char* directory);
 void HTTP_send_response(struct http_request* request, struct http_response response);
 void HTTP_free(struct http_server* server);

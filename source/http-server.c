@@ -249,7 +249,7 @@ void HTTP_handle(struct http_server* server)
     SS_handle(server->socket);
 }
 
-void HTTP_register_directory(struct http_server* server, char* url, char* directory)
+void HTTP_register_file(struct http_server* server, char* url, char* directory)
 {
     struct http_route* route = calloc(1, sizeof(*route));
 
