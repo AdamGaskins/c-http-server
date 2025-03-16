@@ -75,6 +75,7 @@ struct http_request {
     enum request_method method;
     char const* url;
     char const* protocol;
+    uint16_t header_count;
     struct http_header* headers;
 };
 
@@ -105,6 +106,49 @@ static char const* parse_string(char const* data, uint16_t* i)
     return string;
 }
 
+int parse_http_header(struct http_header* header, char const* data, uint16_t* i)
+{
+    if (data[*i] == 0 || data[*i] == '\r') {
+        return 0;
+    }
+
+    int start = *i;
+    int end = *i;
+    int datalen = strlen(data);
+    int colonIndex = 0;
+
+    for (; *i < datalen; (*i)++) {
+        if (data[*i] == ':' && colonIndex == 0) {
+            colonIndex = *i;
+            continue;
+        }
+
+        if (data[*i] == 0 || data[*i] == '\r') {
+            end = *i;
+
+            if (data[*i] == '\r') {
+                (*i) += 2;
+            }
+
+            break;
+        }
+    }
+
+    if (colonIndex == 0) {
+        return 0;
+    }
+
+    int fieldlen = colonIndex - start;
+    header->field = calloc(fieldlen + 1, sizeof(char));
+    strncpy(header->field, &data[start], fieldlen);
+
+    int valuelen = end - colonIndex - 2; // don't include ": "
+    header->value = calloc(valuelen + 1, sizeof(char));
+    strncpy(header->value, &data[colonIndex + 2], valuelen);
+
+    return 1;
+}
+
 struct http_request* parse_http_request(char const* data)
 {
     struct http_request* req = malloc(sizeof(*req));
@@ -116,13 +160,25 @@ struct http_request* parse_http_request(char const* data)
     req->url = parse_string(data, &i);
     req->protocol = parse_string(data, &i);
 
+    req->headers = calloc(256, sizeof(*req->headers));
+    for (req->header_count = 0; req->header_count < 256; req->header_count++) {
+        int success = parse_http_header(&req->headers[req->header_count], data, &i);
+
+        if (success == 0) {
+            break;
+        }
+    }
+
     return req;
 }
 
 void message_received(struct socket_client* client, char const* message)
 {
     struct http_request* req = parse_http_request(message);
-    printf("%s %s %s\n", method_to_string(req->method), req->url, req->protocol);
+    printf("\n> %s %s %s\n", method_to_string(req->method), req->url, req->protocol);
+    for (int i = 0; i < req->header_count; i++) {
+        printf("> %s: %s\n", req->headers[i].field, req->headers[i].value);
+    }
     free(req);
 
     char data[] = "<html><body><h1>Hello World!</h1></body></html>";
