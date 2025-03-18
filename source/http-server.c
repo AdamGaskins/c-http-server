@@ -1,5 +1,7 @@
 #include "http-server.h"
 #include "socket-server.h"
+#include <ctype.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,6 +65,29 @@ char* HTTP_status_to_string(enum http_status status)
     default:
         return "";
     }
+}
+
+char* _get_extension(char* data)
+{
+    char* slash = strrchr(data, '/');
+    char* last_dot = strrchr(slash == NULL ? data : (slash + 1), '.');
+
+    if (slash != NULL && slash + 1 == last_dot) {
+        return "";
+    }
+
+    if (last_dot == NULL) {
+        return "";
+    }
+
+    last_dot++;
+    size_t ext_len = strlen(last_dot);
+    char* extension = calloc(ext_len, sizeof(*extension));
+
+    for (size_t i = 0; i < ext_len; i++) {
+        extension[i] = tolower(last_dot[i]);
+    }
+    return extension;
 }
 
 static char const* _parse_string(char const* data, uint16_t* i)
@@ -191,9 +216,9 @@ void _socket_message_received(struct socket_server* socket_server, struct socket
     req->client = client;
 
     printf("\n> %s %s %s\n", HTTP_method_to_string(req->method), req->url, req->protocol);
-    for (int i = 0; i < req->header_count; i++) {
-        printf("> %s: %s\n", req->headers[i].field, req->headers[i].value);
-    }
+    /* for (int i = 0; i < req->header_count; i++) { */
+    /*     printf("> %s: %s\n", req->headers[i].field, req->headers[i].value); */
+    /* } */
 
     bool response_sent = false;
     for (int i = 0; i < server->route_count; i++) {
@@ -203,11 +228,13 @@ void _socket_message_received(struct socket_server* socket_server, struct socket
             continue;
 
         if (strcmp(route->url, req->url) == 0) {
-            char* contents = _readfile(route->directory);
+            char* contents = _readfile(route->file);
 
             struct http_response response = {
                 .status = RESPONSE_200_OK,
-                .body = contents
+                .body = contents,
+                .header_count = route->header_count,
+                .headers = route->headers
             };
 
             HTTP_send_response(req, response);
@@ -236,10 +263,21 @@ struct http_server* HTTP_open(uint16_t port)
         return 0;
     }
 
+    server->mimetypes = calloc(256, sizeof(*server->mimetypes));
+    HTTP_register_mimetype(server, "html", "text/html");
+
     server->socket = socket;
     server->routes = calloc(256, sizeof(*server->routes));
 
     return server;
+}
+
+void HTTP_register_mimetype(struct http_server* server, char* extension, char* mimetype)
+{
+    server->mimetypes[server->mimetype_count++] = (struct http_mime_type_mapping) {
+        .extension = extension,
+        .mimetype = mimetype
+    };
 }
 
 void HTTP_handle(struct http_server* server)
@@ -249,14 +287,35 @@ void HTTP_handle(struct http_server* server)
     SS_handle(server->socket);
 }
 
-void HTTP_register_file(struct http_server* server, char* url, char* directory)
+void HTTP_register_file(struct http_server* server, char* url, char* file, struct http_header* headers, uint16_t header_count)
 {
     struct http_route* route = calloc(1, sizeof(*route));
 
     route->method = METHOD_GET;
     route->type = ROUTE_DIRECTORY;
     route->url = url;
-    route->directory = directory;
+    route->file = file;
+
+    route->headers = calloc(256, sizeof(*route->headers));
+    route->header_count = header_count;
+    for (int i = 0; i < header_count; i++) {
+        route->headers[i] = headers[i];
+    }
+
+    char* file_ext = _get_extension(file);
+    char* content_type = "application/octet-stream";
+    if (strcmp(file_ext, "") != 0) {
+        for (int i = 0; i < server->mimetype_count; i++) {
+            if (strcmp(file_ext, server->mimetypes[i].extension) != 0) {
+                continue;
+            }
+
+            content_type = server->mimetypes[i].mimetype;
+            break;
+        }
+    }
+    free(file_ext);
+    route->headers[route->header_count++] = (struct http_header) { "Content-Type", content_type };
 
     server->routes[server->route_count++] = *route;
 }
@@ -267,15 +326,26 @@ void HTTP_send_response(struct http_request* request, struct http_response respo
 
     SS_send(request->client, "HTTP/1.1 ");
     SS_send(request->client, HTTP_status_to_string(response.status));
-    SS_send(request->client, "\nContent-Type: text/html");
-    SS_send(request->client, "\nContent-Length: ");
 
+    SS_send(request->client, "\r\nContent-Length: ");
     char str[100] = { 0 };
     sprintf(str, "%zd", body_len);
     SS_send(request->client, str);
 
-    SS_send(request->client, "\n\n");
+    for (int i = 0; i < response.header_count; i++) {
+        SS_send(request->client, "\r\n");
+        SS_send(request->client, response.headers[i].field);
+        SS_send(request->client, ": ");
+        SS_send(request->client, response.headers[i].value);
+    }
+
+    SS_send(request->client, "\r\n\r\n");
     SS_send(request->client, response.body);
+}
+
+void HTTP_free_response(struct http_response response)
+{
+    free(response.headers);
 }
 
 void HTTP_free(struct http_server* server)
