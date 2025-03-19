@@ -10,10 +10,7 @@ int main()
         return 1;
     }
 
-    struct http_header headers[] = {
-        /* (struct http_header) { .field = "Content-Type", .value = "text/html" } */
-    };
-    HTTP_register_file(serv, "/index.html", "html/index.html", headers, 0);
+    HTTP_register_directory(serv, "/", "html/");
 
     HTTP_handle(serv);
 

@@ -1,5 +1,6 @@
 #include "http-server.h"
 #include "socket-server.h"
+#include "utils.h"
 #include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -289,12 +290,19 @@ void HTTP_handle(struct http_server* server)
 
 void HTTP_register_file(struct http_server* server, char* url, char* file, struct http_header* headers, uint16_t header_count)
 {
+    printf("Registering %s -> %s\n", url, file);
+
     struct http_route* route = calloc(1, sizeof(*route));
+
+    char* urlcpy = calloc(256, sizeof(*urlcpy));
+    strcpy(urlcpy, url);
+    char* filecpy = calloc(256, sizeof(*filecpy));
+    strcpy(filecpy, file);
 
     route->method = METHOD_GET;
     route->type = ROUTE_DIRECTORY;
-    route->url = url;
-    route->file = file;
+    route->url = urlcpy;
+    route->file = filecpy;
 
     route->headers = calloc(256, sizeof(*route->headers));
     route->header_count = header_count;
@@ -320,11 +328,42 @@ void HTTP_register_file(struct http_server* server, char* url, char* file, struc
     server->routes[server->route_count++] = *route;
 }
 
+void HTTP_register_directory(struct http_server* server, char* url, char* path)
+{
+    struct directory* dir = directory_listing(path);
+
+    for (uint32_t i = 0; i < dir->entry_count; i++) {
+        if (dir->entries[i].type == ENTRY_DIR) {
+            char* dirurl = calloc(256, sizeof(*dirurl));
+            strcat(dirurl, url);
+            strcat(dirurl, dir->entries[i].name);
+
+            HTTP_register_directory(server, dirurl, dir->entries[i].path);
+
+            free(dirurl);
+        } else {
+            char* fileurl = calloc(256, sizeof(*fileurl));
+            strcat(fileurl, url);
+            strcat(fileurl, dir->entries[i].name);
+
+            HTTP_register_file(server, fileurl, dir->entries[i].path, 0, 0);
+            if (strcmp(dir->entries[i].name, "index.html") == 0) {
+                HTTP_register_file(server, url, dir->entries[i].path, 0, 0);
+            }
+
+            free(fileurl);
+        }
+    }
+
+    directory_listing_free(dir);
+}
+
 void HTTP_send_response(struct http_request* request, struct http_response response)
 {
     size_t body_len = strlen(response.body);
 
     SS_send(request->client, "HTTP/1.1 ");
+    printf("< HTTP/1.1 %s\n", HTTP_status_to_string(response.status));
     SS_send(request->client, HTTP_status_to_string(response.status));
 
     SS_send(request->client, "\r\nContent-Length: ");

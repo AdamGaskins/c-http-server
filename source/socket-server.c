@@ -122,13 +122,17 @@ static void _handle_poll(struct socket_server* server, struct pollfd poll_result
             _accept_new_client(server);
         } else {
             _receive_from_client(server, &server->clients[i - 1], poll_results[i]);
-
-            if (server->clients[i - 1].disconnected) {
-                // TODO: Expose function for client disconnected
-                printf("Client disconnected.\n");
-                server->clients[i - 1] = server->clients[--server->client_count];
-            }
         }
+    }
+
+    // disconnect clients
+    for (int i = 1; i < server->client_count + 1; i++) {
+        if (!server->clients[i - 1].disconnected) {
+            continue;
+        }
+
+        server->clients[i - 1] = server->clients[--server->client_count];
+        printf("Client disconnected.\n");
     }
 }
 

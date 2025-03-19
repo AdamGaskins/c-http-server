@@ -77,7 +77,7 @@ struct http_server* HTTP_open(uint16_t port);
 void HTTP_register_mimetype(struct http_server* server, char* extension, char* mimetype);
 void HTTP_handle(struct http_server* server);
 void HTTP_register_file(struct http_server* server, char* url, char* file, struct http_header* headers, uint16_t header_count);
-void HTTP_register_directory(struct http_server* server, char* url, char* directory);
+void HTTP_register_directory(struct http_server* server, char* url, char* path);
 void HTTP_send_response(struct http_request* request, struct http_response response);
 void HTTP_free_response(struct http_response response);
 void HTTP_free(struct http_server* server);
